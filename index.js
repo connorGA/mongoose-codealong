@@ -1,10 +1,10 @@
 const express = require('express');
 const app = express();
 const mongoose = require('mongoose');
-const post = require('./schemas/post');
 const Post = require('./schemas/post');
 const User = require('./schemas/user');
 const Comment = require('./schemas/comment');
+const post = require('./schemas/post');
 
 
 const mongoDb = 'mongodb://127.0.0.1/mongoose-codealong';
@@ -141,18 +141,30 @@ app.get('/posts', (req, res) => {
 });
 
 //Get post by title
-app.get('/posts/:title', (req, res) => {
-    console.log('find post by', req.params.title)
-    Post.findOne({
-        title: req.params.title
-    })
-    .then(post => {
-        console.log('Here is the post', post.title);
-        res.json({ post: post });
+// app.get('/posts/:title', (req, res) => {
+//     console.log('find post by', req.params.title)
+//     Post.findOne({
+//         title: req.params.title
+//     })
+//     .then(post => {
+//         console.log('Here is the post', post.title);
+//         res.json({ post: post });
+//     })
+//     .catch(error => { 
+//         console.log('error', error);
+//         res.json({ message: "Error ocurred, please try again" });
+//     });
+// });
+
+// Get post by Id
+app.get('/posts/:id', (req,res) => {
+    Post.findById(req.params.id)
+    .then(posts => {
+        console.log('This post', posts);                 //this is an example of above route but using :id instead of :title. Can only have one route using req.params (:something) because they mean the same thing to the server, so the first route is the one that gets read
+        res.json({ posts: posts });
     })
     .catch(error => { 
-        console.log('error', error);
-        res.json({ message: "Error ocurred, please try again" });
+        console.log('error >>>>>>', error) 
     });
 });
 
@@ -161,7 +173,7 @@ app.post('/posts', (req, res) => {
     Post.create({
         title: req.body.title,
         body: req.body.body,
-        comments: {
+        comment: {
             header: req.body.header,
             content: req.body.content
             
@@ -236,15 +248,49 @@ app.get('/comments', (req, res) => {
     });
 });
 
-//get comment by header
-app.get('/comments/:header', (req, res) => {
-    console.log('find comment by', req.params.header)
-    Comment.findOne({
-        header: req.params.header
-    })
+//get comment by id
+app.get('/comments/:id', (req,res) => {
+    Comment.findById(req.params.id)
     .then(comment => {
-        console.log('Here is the comment', comment.header);
+        console.log('This comment', comment);                 //this is an example of above route but using :id instead of :title. Can only have one route using req.params (:something) because they mean the same thing to the server, so the first route is the one that gets read
         res.json({ comment: comment });
+    })
+    .catch(error => { 
+        console.log('error >>>>>>', error) 
+    });
+});
+
+
+//Get all comments on post by id
+app.get('/posts/:id/comments', (req, res) => {
+    Post.findById(req.params.id).populate('comments').exec()
+    .then(post => {
+        console.log('here is the post', post);
+    })
+})
+
+
+
+//POST comments
+app.post('/posts/:id/comments', (req, res) => {
+    Post.findById(req.params.id)
+    .then(post => {
+        console.log('Heyyy, this is the post', post);
+        // create and pust comment inside of post
+        Comment.create({
+            header: req.body.header,
+            content: req.body.content
+        })
+        .then(comment => {
+            post.comments.push(comment);
+            // save the post
+            post.save();
+            res.redirect(`/posts/${req.params.id}`);
+        })
+        .catch(error => { 
+            console.log('error', error);
+            res.json({ message: "Error ocurred, please try again" });
+        });
     })
     .catch(error => { 
         console.log('error', error);
@@ -252,37 +298,21 @@ app.get('/comments/:header', (req, res) => {
     });
 });
 
-//POST comments
-app.post('/comments', (req, res) => {
-    Comment.create({
-        header: req.body.header,
-        content: req.body.content,
-       
-    })
-    .then(comment => {
-        console.log('New comment =>>', comment);
-        res.json({ comment: comment });
-    })
-    .catch(error => { 
-        console.log('error', error) 
-        res.json({ message: "Error ocurred, please try again" })
-    });
-});
-
 // PUT Route
-app.put('/comments/:header', (req, res) => {
+app.put('/comments/:id', (req, res) => {
     console.log('route is being on PUT')
-    Comment.findOne({ header: req.params.header })
+    Comment.findById(req.params.id)
     .then(foundComment => {
         console.log('Comment found', foundComment);
-        Comment.findOneAndUpdate({ header: req.params.header }, 
-        { 
-            header: req.body.header ? req.body.header : foundComment.header,
-            content: req.body.content ? req.body.content : foundComment.content,
+        Comment.findByIdAndUpdate(req.params.id, { 
+                header: req.body.header ? req.body.header : foundComment.header,
+                content: req.body.content ? req.body.content : foundComment.content,
+        }, { 
+            upsert: true 
         })
         .then(comment => {
             console.log('Comment was updated', comment);
-            res.redirect(`/comments/${req.params.header}`)
+            res.redirect(`/comments/${req.params.id}`);
         })
         .catch(error => {
             console.log('error', error) 
@@ -293,15 +323,14 @@ app.put('/comments/:header', (req, res) => {
         console.log('error', error) 
         res.json({ message: "Error ocurred, please try again" })
     })
-    
 });
 
-//DELETE Route
-app.delete('/comments/:header', (req, res) => {
-    Comment.findOneAndRemove({ header: req.params.header })
+//Delete route
+app.delete('/comments/:id', (req, res) => {
+    Comment.findByIdAndRemove(req.params.id)
     .then(response => {
-        console.log('This was delete', response);
-        res.json({ message: `${req.params.header} was deleted`});
+        console.log('This was deleted', response);
+        res.json({ message: `Comment ${req.params.id} was deleted`});
     })
     .catch(error => {
         console.log('error', error) 
@@ -374,16 +403,16 @@ app.delete('/comments/:header', (req, res) => {
 //     console.log("created new post")
 // });
 
-//creating new Comment
-const newComment = new Comment ({
-    header: "test",
-    content: "testing create comment"
-});
+//creating new Comment //////////////////////////////////////////////////
+// const refComment = new Comment ({
+//     header: "test",
+//     content: "testing create comment"
+// });
 
-newComment.save((err) => {
-    if (err) return console.log(err);
-    console.log("created new comment")
-});
+// refComment.save((err) => {
+//     if (err) return console.log(err);
+//     console.log("created new comment")
+// });
 
 
 
